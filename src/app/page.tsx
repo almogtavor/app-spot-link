@@ -169,7 +169,7 @@ export default function Home() {
             ) : targetPlatform ? (
               <>
                 {PLATFORM_ICONS[targetPlatform]}
-                Open in {PLATFORM_NAMES[targetPlatform]}
+                Search in {PLATFORM_NAMES[targetPlatform]}
               </>
             ) : (
               "Paste a music link above"
