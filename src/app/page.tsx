@@ -9,6 +9,7 @@ interface ConvertResult {
   sourcePlatform: Platform;
   targetPlatform: Platform;
   targetUrl: string;
+  isFallbackSearch?: boolean;
   song: { title?: string; artist?: string; thumbnail?: string } | null;
   songLinkUrl: string;
 }
@@ -43,6 +44,26 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ConvertResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    if (!result) return;
+    navigator.clipboard.writeText(result.targetUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  function handleShare() {
+    if (!result) return;
+    const text = result.song
+      ? `${result.song.title} - ${result.song.artist}`
+      : "Check out this song";
+    if (navigator.share) {
+      navigator.share({ title: text, url: result.targetUrl });
+    } else {
+      handleCopy();
+    }
+  }
 
   const sourcePlatform = detectPlatform(inputUrl);
   const targetPlatform: Platform | null =
@@ -55,6 +76,7 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setCopied(false);
 
     try {
       const res = await fetch(`/api/convert?url=${encodeURIComponent(inputUrl.trim())}`);
@@ -185,6 +207,11 @@ export default function Home() {
             )}
 
             <div className="p-4 space-y-3">
+              {result.isFallbackSearch && (
+                <p className="text-zinc-400 text-xs text-center">
+                  Exact match not found - opening search results instead
+                </p>
+              )}
               <a
                 href={result.targetUrl}
                 target="_blank"
@@ -192,7 +219,7 @@ export default function Home() {
                 className={`flex items-center justify-center gap-2 w-full py-3 rounded-xl font-semibold text-white transition ${PLATFORM_COLORS[result.targetPlatform]}`}
               >
                 {PLATFORM_ICONS[result.targetPlatform]}
-                Open in {PLATFORM_NAMES[result.targetPlatform]}
+                {result.isFallbackSearch ? `Open on ${PLATFORM_NAMES[result.targetPlatform]}` : `Search on ${PLATFORM_NAMES[result.targetPlatform]}`}
               </a>
 
               <div className="flex items-center gap-2">
@@ -203,10 +230,27 @@ export default function Home() {
                   className="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 text-xs focus:outline-none truncate"
                 />
                 <button
-                  onClick={() => navigator.clipboard.writeText(result.targetUrl)}
-                  className="flex-shrink-0 bg-zinc-800 border border-zinc-700 hover:border-zinc-500 rounded-lg px-3 py-2 text-xs text-zinc-400 hover:text-white transition"
+                  onClick={handleCopy}
+                  className={`flex-shrink-0 border rounded-lg px-3 py-2 text-xs transition-all duration-200 min-w-[52px] ${
+                    copied
+                      ? "bg-green-900/50 border-green-700 text-green-400 scale-105"
+                      : "bg-zinc-800 border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-white"
+                  }`}
                 >
-                  Copy
+                  {copied ? "Copied!" : "Copy"}
+                </button>
+                <button
+                  onClick={handleShare}
+                  className="flex-shrink-0 bg-zinc-800 border border-zinc-700 hover:border-zinc-500 rounded-lg px-3 py-2 text-zinc-400 hover:text-white transition"
+                  aria-label="Share"
+                >
+                  <svg viewBox="0 0 24 24" className="w-4 h-4 fill-none stroke-current" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="18" cy="5" r="3" />
+                    <circle cx="6" cy="12" r="3" />
+                    <circle cx="18" cy="19" r="3" />
+                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                  </svg>
                 </button>
               </div>
             </div>

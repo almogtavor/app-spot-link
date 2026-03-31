@@ -75,6 +75,30 @@ async function searchSpotify(title: string, artist: string): Promise<string | nu
   return track ? track.external_urls.spotify : null;
 }
 
+// --- Deezer Search API (free, no credentials) ---
+
+async function searchDeezer(title: string, artist: string): Promise<{ spotifyUrl: string | null; appleMusicUrl: string | null }> {
+  const query = `artist:"${artist}" track:"${title}"`;
+  const res = await fetch(
+    `https://api.deezer.com/search/track?q=${encodeURIComponent(query)}&limit=1`,
+  );
+  if (!res.ok) return { spotifyUrl: null, appleMusicUrl: null };
+  const data = await res.json();
+  const track = data.data?.[0];
+  if (!track) return { spotifyUrl: null, appleMusicUrl: null };
+
+  // Use the Deezer link with Odesli to resolve to other platforms
+  const odesliRes = await fetch(
+    `https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(`https://www.deezer.com/track/${track.id}`)}&userCountry=US`,
+  );
+  if (!odesliRes.ok) return { spotifyUrl: null, appleMusicUrl: null };
+  const odesliData: OdesliResponse = await odesliRes.json();
+  return {
+    spotifyUrl: odesliData.linksByPlatform?.spotify?.url ?? null,
+    appleMusicUrl: odesliData.linksByPlatform?.appleMusic?.url ?? null,
+  };
+}
+
 // --- iTunes Search API (no credentials needed) ---
 
 async function searchAppleMusic(title: string, artist: string): Promise<string | null> {
@@ -176,13 +200,41 @@ export async function GET(request: NextRequest) {
     ? { title: entity.title, artist: entity.artistName, thumbnail: entity.thumbnailUrl }
     : null;
 
-  // Fallback: search the target platform directly if Odesli doesn't have it
+  // Fallback chain when Odesli doesn't have the target platform link:
+  // 1. Deezer search -> Odesli resolve (free, no credentials)
+  // 2. Spotify API search (requires Premium credentials)
+  // 3. iTunes Search API (free, for Apple Music targets)
   if (!targetUrl && song?.title && song?.artist) {
-    if (targetPlatform === "spotify") {
-      targetUrl = await searchSpotify(song.title, song.artist);
-    } else {
-      targetUrl = await searchAppleMusic(song.title, song.artist);
+    try {
+      const deezerResult = await searchDeezer(song.title, song.artist);
+      targetUrl = targetPlatform === "spotify" ? deezerResult.spotifyUrl : deezerResult.appleMusicUrl;
+    } catch (e) {
+      console.error("Deezer fallback failed:", e);
     }
+
+    if (!targetUrl) {
+      try {
+        if (targetPlatform === "spotify") {
+          targetUrl = await searchSpotify(song.title, song.artist);
+        } else {
+          targetUrl = await searchAppleMusic(song.title, song.artist);
+        }
+      } catch (e) {
+        console.error("Direct search fallback failed:", e);
+      }
+    }
+  }
+
+  // Last resort: link to search page on the target platform
+  let isFallbackSearch = false;
+  if (!targetUrl && song?.title && song?.artist) {
+    const query = [song.artist, song.title].filter(Boolean).join(" ");
+    if (targetPlatform === "spotify") {
+      targetUrl = `https://open.spotify.com/search/${encodeURIComponent(query)}`;
+    } else {
+      targetUrl = `https://music.apple.com/search?term=${encodeURIComponent(query)}`;
+    }
+    isFallbackSearch = true;
   }
 
   if (!targetUrl) {
@@ -197,6 +249,7 @@ export async function GET(request: NextRequest) {
     sourcePlatform,
     targetPlatform,
     targetUrl,
+    isFallbackSearch,
     song,
     songLinkUrl: data.pageUrl,
   });

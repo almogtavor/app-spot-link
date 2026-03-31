@@ -2,4 +2,4 @@
 
 paste an **Apple Music** link -> get a **Spotify** link
 
-or the other way around. [link to use](https://appspotlink.vercel.app/)
+or the other way around. [use here](https://appspotlink.vercel.app/)
